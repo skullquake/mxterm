@@ -1,0 +1,2 @@
+# mxterm
+mx jquery.terminal

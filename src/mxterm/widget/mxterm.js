@@ -4,10 +4,7 @@ require(
 			{
 				name:'jquery',
 				location:'/widgets/mxterm/lib',
-				//main:'jquery-1.11.2.min',
-				//main:'jquery-3.1.1.min',
 				main:'jquery-3.2.1.min',
-				//main:'jquery-1.7.1.min'
 			},
 			{
 				name:'mousewheel',
@@ -44,15 +41,8 @@ require(
 		"dojo/keys",
 		"dojo/dom-attr",
 		"dojo/_base/event",
-		//"mxterm/lib/jquery.terminal.min",
-		//"mxterm/lib/jquery-3.1.1.min",
-		//"mxterm/lib/jquery-3.2.1.min",
-		//"mxterm/lib/jquery-1.11.2",
-		//"mxterm/lib/jquery.mousewheel-min",
-		//"mxterm/lib/keyboard",
 		'jquery',
 		'mousewheel',
-		//'terminal',
 		'keyboard',
 		"dojo/text!mxterm/widget/template/mxterm.html"
 	],
@@ -74,26 +64,12 @@ require(
 		dojoKeys,
 		dojoAttr,
 		dojoEvent,
-		//_jqueryTerminal,
-		//_jqueryMousewheel,
-		//_keyboard,
 		jquery,
 		mousewheel,
-		//dterm,
-		//terminal,
 		keyboard,
 		widgetTemplate
 	){
 		"use strict";
-		console.log('1----------------------------------------');
-		console.log(jquery)
-		console.log('2----------------------------------------');
-//jquery.terminal-2.4.0.min.js
-//jquery.terminal-2.8.0.js
-//jquery.terminal-2.8.0.min.js
-//jquery-1.7.1.min.js
-
-		//require({packages:[{name:'terminal',location:'/widgets/mxterm/lib/jqueryTerminal',main:'jquery.terminal-2.4.0.min',}]},['terminal'],dojo.hitch(this,function(terminal){alert('test');}));
 		var $=jquery.noConflict(true);
     // -----------------------------------------------------------------------
     // :: debug functions
@@ -9407,7 +9383,123 @@ require(
 					this._hanels=[];
 				},
 				postCreate:function(){
-					$(this.domNode).terminal();
+					this.term=$(this.domNode).terminal(
+						dojo.hitch(
+							this,
+							function(command,term){
+								if(command=='exit'){
+									var pnt=null;
+									pnt=this.getParent();
+									var arr_pnt=[];
+									while(pnt!=null){
+										try{
+											arr_pnt.push(pnt);
+											pnt=pnt.getParent();
+										}catch(e){
+											console.error(e);
+											pnt=null;
+										}
+									}
+									var obj_win=arr_pnt.find(function(pnt){return pnt.declaredClass=='mxui.widget.Window';});
+									obj_win==null?mx.ui.getContentForm().close():obj_win.destroyRecursive();
+								}else if(command=='help'){
+									term.echo("available commands are fs, js, test, help, exit");
+								}else if(command=='test'){
+									term.push(
+										dojo.hitch(
+											this,
+											function(command,term) {
+												if(command=='exit'){
+													term.pop();
+													return;
+												}
+												if(command=='help'){
+													term.echo('if you type ping it will display pong');
+												}else if(command=='ping'){
+													term.echo('pong');
+												}else{
+													term.echo('unknown command '+command);
+												}
+											}
+										),
+										{
+											prompt:'test> ',
+											name:'test'
+										}
+									);
+								}else if(command=="js"){
+									term.push(
+										dojo.hitch(
+											this,
+											function(command,term){
+												if(command=='exit'){
+													term.pop();
+													return;
+												}
+												//var result=window.eval(command);
+												var result=eval(command);
+												if(result!=undefined){
+													term.echo(String(result));
+												}
+											}
+										),
+										{
+											name:'js',
+											prompt:'js> '
+										}
+									);
+								}else if(command=="fs"){
+									term.push(
+										dojo.hitch(
+											this,
+											function(command,term){
+												if(command=='exit'){
+													term.pop();
+													return;
+												}
+												this._contextObj.set('Val',command);
+												this.executeMicroflow(
+													this.mf_cmd,
+													false,
+													false,
+													dojo.hitch(
+														this,
+														function(a){
+															if(a!=null)term.echo(String(a));
+														}
+													),
+													dojo.hitch(
+														this,
+														function(e){
+															term.echo(String(e));
+														}
+													)
+												);
+											}
+										),
+										{
+											name:'fs',
+											prompt:'fs> '
+										}
+									);
+
+								}else{
+									term.echo("unknow command "+command);
+								}
+							}
+						),
+						{
+							greetings:"mxterm",
+							prompt: 'root>',
+							height: 400,
+							onBlur:dojo.hitch(
+								this,
+								function(){
+									//return false;
+								}
+							)
+						}
+					);
 				},
 				update:function(obj,callback){
 					this._contextObj=obj;
@@ -9433,7 +9525,7 @@ require(
 				_isEmptyString:function(str){
 					return (!str||0===str.trim().length);
 				},
-				executeMicroflow:function(mf,async,showProgress){
+				executeMicroflow:function(mf,async,showProgress,cb,err){
 					if(mf&&this._contextObj){
 						if (showProgress) {
 							var isModal=true;
@@ -9451,12 +9543,12 @@ require(
 									guids:[this._contextObj.getGuid()],
 									
 								},
-								callback: function () {
+								callback:typeof(cb)=='function'?cb:function () {
 									if (showProgress) {
 									mx.ui.hideProgress(pid);
 									}
 								},
-								error: function () {
+								error: typeof(err)=='function'?err:function () {
 									logger.error("mxterm.widget.mxterm.triggerMicroFlow: XAS error executing microflow");
 									if (showProgress) {   
 									mx.ui.hideProgress(pid);
@@ -9488,12 +9580,12 @@ require(
 				_showError:function(msg){
 					//unimplemented
 				},
-				_clearValidations: function () {
+				_clearValidations:function(){
 					dojoConstruct.destroy(this._alertDiv);
 					this._alertDiv=null;
 				},
-				_resetSubscriptions: function () {
-					if (this._handles) {
+				_resetSubscriptions:function(){
+					if (this._handles){
 						this._handles.forEach(
 							function(handle){
 								mx.data.unsubscribe(handle);
@@ -9519,7 +9611,7 @@ require(
 								attr:this.dataAttr,
 								callback:dojoLang.hitch(
 									this,
-									function(guid,attr,attrValue) {
+									function(guid,attr,attrValue){
 										this._updateRendering();
 									}
 								)
@@ -9528,232 +9620,17 @@ require(
 						var validationHandle=mx.data.subscribe({
 							guid:this._contextObj.getGuid(),
 							val:true,
-							callback: dojoLang.hitch(this, this._handleValidation)
+							callback: dojoLang.hitch(this,this._handleValidation)
 						});
 						this._handles=[objectHandle,attrHandle,validationHandle];
 					}
+				},
+				destroy:function(){
+					this.term.destroy();
 				}
-
 			}
 		);
 	}
 );
 
-/*
- *
-define(
-	[
-		"dojo/_base/declare",
-		"mxui/widget/_WidgetBase",
-		"dijit/_TemplatedMixin",
-		"mxui/dom",
-		"dojo/dom",
-		"dojo/dom-prop",
-		"dojo/dom-geometry",
-		"dojo/dom-class",
-		"dojo/dom-style",
-		"dojo/dom-construct",
-		"dojo/_base/array",
-		"dojo/_base/lang",
-		"dojo/text",
-		"dojo/html",
-		"dojo/keys",
-		"dojo/dom-attr",
-		"dojo/_base/event",
-		//"mxterm/lib/jquery.terminal.min",
-		"mxterm/lib/jquery.mousewheel-min",
-		//"mxterm/lib/jquery-3.1.1.min",
-		//"mxterm/lib/jquery-3.2.1.min",
-		"mxterm/lib/jquery-1.11.2",
-		"mxterm/lib/keyboard",
-		"dojo/text!mxterm/widget/template/mxterm.html"
-	],
-	function(
-		declare,
-		_WidgetBase,
-		_TemplatedMixin,
-		dom,
-		dojoDom,
-		dojoProp,
-		dojoGeometry,
-		dojoClass,
-		dojoStyle,
-		dojoConstruct,
-		dojoArray,
-		dojoLang,
-		dojoText,
-		dojoHtml,
-		dojoKeys,
-		dojoAttr,
-		dojoEvent,
-		//_jqueryTerminal,
-		_jqueryMousewheel,
-		_jQuery,
-		_keyboard,
-		widgetTemplate
-	){
-		"use strict";
-		//var $=_jQuery.noConflict(true);
-		return declare(
-			"mxterm.widget.mxterm",
-			[
-				_WidgetBase,
-				_TemplatedMixin
-			],
-			{
-				templateString:widgetTemplate,
-				inputBox:null,
-				mf_cmd:"",
-				attr_val:"",
-				async:"",
-				_contextObj:null,
-				_alertDiv:null,
-				_handles:null,
-				constructor: function(){
-					this._hanels=[];
-				},
-				postCreate:function(){
-					console.log('----------------------------------------')
-					console.log($);
-					$(this.domNode).terminal();
-					console.log('----------------------------------------')
-					mx.ui.info('test0');
-				},
-				update:function(obj,callback){
-					this._contextObj=obj;
-					this._resetSubscriptions();
-					this._updateRendering(callback);
-				},
-				_updateRendering:function(callback){
-					if(this._contextObj!==null){
-					}else{
-					}
-					this._executeCallback(callback,"_updateRendering");
-				},
-				uninitialize:function(){
-				},
-				onEnterClick:function(event) {
-					this._contextObj.set(this.inputValue,this.inputBox.value);
-					if(event.keyCode==dojoKeys.ENTER){
-						if (this.mfToExecute!==""){  
-							this.executeMicroflow(this.mfToExecute,this.async,this.progressBar);
-						}
-					}
-				},
-				_isEmptyString:function(str){
-					return (!str||0===str.trim().length);
-				},
-				executeMicroflow:function(mf,async,showProgress){
-					if(mf&&this._contextObj){
-						if (showProgress) {
-							var isModal=true;
-							var pid=mx.ui.showProgress(this.progressMsg,isModal);
-						}
-						mx.data.action(
-							{
-								async:async,  
-								 store:{
-								   caller:this.mxform 
-								},
-								params: {
-									actionname:mf,
-									applyto:"selection",
-									guids:[this._contextObj.getGuid()],
-									
-								},
-								callback: function () {
-									if (showProgress) {
-									mx.ui.hideProgress(pid);
-									}
-								},
-								error: function () {
-									logger.error("mxterm.widget.mxterm.triggerMicroFlow: XAS error executing microflow");
-									if (showProgress) {   
-									mx.ui.hideProgress(pid);
-									}
-								}
-							}
-						);
-					}
-				},
-				_executeCallback:function(cb,from){
-					if(cb&&typeof cb==="function"){
-						cb();
-					}
-				},
-				_handleValidation:function(validations){
-					this._clearValidations();
-					var validation=validations[0];
-					var message=validation.getReasonByAttribute(this.dataAttr);
-					if(this.readOnly){
-						validation.removeAttribute(this.dataAttr);
-					}else if(message) {
-						this._addValidation(message);
-						validation.removeAttribute(this.dataAttr);
-					}
-				},
-				_addValidation:function(message){
-					this._showError(message);
-				},
-				_showError:function(msg){
-					//unimplemented
-				},
-				_clearValidations: function () {
-					dojoConstruct.destroy(this._alertDiv);
-					this._alertDiv=null;
-				},
-				_resetSubscriptions: function () {
-					if (this._handles) {
-						this._handles.forEach(
-							function(handle){
-								mx.data.unsubscribe(handle);
-							}
-						);
-						this._handles=[];
-					}
-					if(this._contextObj){
-						var objectHandle=mx.data.subscribe(
-							{
-								guid:this._contextObj.getGuid(),
-								callback:dojoLang.hitch(
-									this,
-									function(guid){
-										this._updateRendering();
-									}
-								)
-							}
-						);
-						var attrHandle=mx.data.subscribe(
-							{
-								guid:this._contextObj.getGuid(),
-								attr:this.dataAttr,
-								callback:dojoLang.hitch(
-									this,
-									function(guid,attr,attrValue) {
-										this._updateRendering();
-									}
-								)
-							}
-						);
-						var validationHandle=mx.data.subscribe({
-							guid:this._contextObj.getGuid(),
-							val:true,
-							callback: dojoLang.hitch(this, this._handleValidation)
-						});
-						this._handles=[objectHandle,attrHandle,validationHandle];
-					}
-				}
 
-			}
-		);
-	}
-);
-require(
-	[
-		"mxterm/widget/mxterm"
-	],function(){
-		"use strict ";
-	}
-);
- *
- */
